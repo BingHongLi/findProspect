@@ -1,5 +1,7 @@
 #########################################
+# 104爬蟲及職缺簡易分詞─李秉鴻
 # 流程解說
+# 0.自動命名函數建立
 # 1.爬蟲
 # 2.初步ETL，刪除長度不足的資料
 # 3.二次ETL，將檔案轉成UTF-8格式
@@ -9,7 +11,16 @@
 # 7.每日自動化
 
 #########################################
+# 0.自動命名函數建立
+#
+autoFileName <-function(path=".//",fileName="forgetName",fileType=".RDS"){
+  t <- Sys.time()
+  timeStamp <- strftime(t,"%Y%m%d%H%M")
+  step1CrawlerListName <- paste(path,fileName,timeStamp,fileType,sep="")
+  step1CrawlerListName
+} 
 
+#########################################
 # 爬蟲
 # 來源網址:http://www.104.com.tw/i/apis/jobsearch.cfm?page=1&pgsz=2000&order=2&fmt=4&cols=JOB,JOBCAT_DESCRIPT,OTHERS,NAME,ADDR_NO_DESCRIPT,ADDRESS,ADDR_INDZONE,INDCAT,LINK,PRODUCT,PROFILE"
 # 作法: 先建立nameList，供命名resultList之用
@@ -29,21 +40,41 @@
 # xmlParse()    解析XML內容
 # xmlChildren() 抓取我們要的xml
 # xmlToList()   將xml轉存為List
+
+# 完整流程計時
+ptm <- proc.time()
+
+# 安裝套件
+if (!require(XML)) install.packages("XML")
+if (!require(RCurl)) install.packages("RCurl")
+
+# 爬蟲函數
 crawler <- function(start,end,sleep){
   nameList <- paste("c",start:end,sep="")
   resultList <- list()
-  system.time(
-    for(i in start:end){
-      Sys.sleep(sleep)
-      getXML<- getURL(url=sprintf("http://www.104.com.tw/i/apis/jobsearch.cfm?page=%d&pgsz=2000&order=2&fmt=4&cols=JOB,JOBCAT_DESCRIPT,OTHERS,NAME,ADDR_NO_DESCRIPT,ADDRESS,ADDR_INDZONE,INDCAT,LINK,PRODUCT,PROFILE",i),encoding="UTF-8")
-      xml <-xmlParse(getXML,encoding="UTF-8") 
-      resultList[[nameList[i]]] <- xmlToList(xmlChildren(xml)[[1]]) 
+  errorNumber <- c()  
+  for(i in start:end){
+      tryCatch({
+        Sys.sleep(sleep)
+        getXML<- getURL(url=sprintf("http://www.104.com.tw/i/apis/jobsearch.cfm?page=%d&pgsz=2000&order=2&fmt=4&cols=JOB,JOBCAT_DESCRIPT,OTHERS,NAME,ADDR_NO_DESCRIPT,ADDRESS,ADDR_INDZONE,INDCAT,LINK,PRODUCT,PROFILE",i),encoding="UTF-8")
+        xml <-xmlParse(getXML,encoding="UTF-8") 
+        resultList[[nameList[i]]] <- xmlToList(xmlChildren(xml)[[1]])
+      }, error=function(e){
+        getXML<- getURL(url=sprintf("http://www.104.com.tw/i/apis/jobsearch.cfm?page=%d&pgsz=2000&order=2&fmt=4&cols=JOB,JOBCAT_DESCRIPT,OTHERS,NAME,ADDR_NO_DESCRIPT,ADDRESS,ADDR_INDZONE,INDCAT,LINK,PRODUCT,PROFILE",i),encoding="UTF-8")
+        xml <-xmlParse(getXML,encoding="UTF-8") 
+        resultList[[nameList[i]]] <- xmlToList(xmlChildren(xml)[[1]])
+        errorNumber <- c(errorNumber,i)
+      }, finally={
+        print(i)  
+      }) 
     }
-  )
   resultList
 }
-# 在當前目錄把resultList存成crawlerFile.RDS
-saveRDS(resultList,"E://LBH//crawlerFile.RDS")
+
+# 在當前目錄把resultList存成crawlerFile.RDS，並自動取名
+step1FileName <- autoFileName(fileName="step1CrawlerFile") # .//step1CrawlerFile(timeStamp).RDS
+step1CrawlerList <- crawler(1,368,1)
+saveRDS(step1CrawlerList,step1FileName)
 ###############################################
 
 # 第一次ETL
@@ -54,8 +85,11 @@ saveRDS(resultList,"E://LBH//crawlerFile.RDS")
 # 3. 以lapply對firstETL執行(全部元素皆會遍歷)
 # 4. 儲存第一次ETL結果
 
+# 設定儲存檔案名
+step2FileName <- autoFileName(fileName="step2FilterColLessThan11")
+
 # 0.讀入爬蟲檔案
-firstETL <- readRDS("E://LBH//crawlerFile.RDS")
+firstETL <- readRDS(step1FileName)
 
 # 1.初始化dataFrame
 initDF <- data.frame(ADDRESS="",ADDR_INDZONE="",ADDR_NO_DESCRIPT="",INDCAT="",JOB="",JOBCAT_DESCRIPT="",LINK="",NAME="",OTHERS="",PRODUCT="",PROFILE="",stringsAsFactors=F)
@@ -64,7 +98,7 @@ initDF <- data.frame(ADDRESS="",ADDR_INDZONE="",ADDR_NO_DESCRIPT="",INDCAT="",JO
 pfilter <- function(x){ 
   if(length(x)==11){
     initDF <<- rbind(initDF,unlist(x,use.names=F,recursive = F),deparse.level = 0)
-    print("success!")
+    #print("success!")
   }
 }
 
@@ -78,7 +112,7 @@ t <- 1
 }))
 
 # 4.儲存第一次ETL結果
-saveRDS(initDF,"E://LBH//step1FilterLengthDone.RDS")
+saveRDS(initDF,step2FileName)
 
 ###############################################
 # 第二次ETL
@@ -88,8 +122,11 @@ saveRDS(initDF,"E://LBH//step1FilterLengthDone.RDS")
 # 1. 以iconv函數轉編碼為UTF-8，準備供TextMining使用
 # 2. 儲存第二次ETL結果
 
+# 設定儲存的檔案名
+step3FileName <- autoFileName(fileName="step3ConvertEncode")
+
 # 0.載入
-step2ConvertUTF8<- readRDS("E://LBH//step1FilterLengthDone.RDS") 
+step2ConvertUTF8<- readRDS(step2FileName) 
 
 # 1.轉編碼
 for(i in 1:length(step2ConvertUTF8)){  
@@ -101,7 +138,7 @@ for(i in 1:length(step2ConvertUTF8)){
 }
 
 # 2.儲存第二次ETL結果
-saveRDS(step2ConvertUTF8,"E://LBH//step2ConvertUTF8.RDS")
+saveRDS(step2ConvertUTF8,step3FileName)
 
 
 ###############################################
@@ -114,8 +151,12 @@ saveRDS(step2ConvertUTF8,"E://LBH//step2ConvertUTF8.RDS")
 # 4. 依照thirdUniqueRowNumber向量，從step3ConvertUTF8中提取資料列
 # 5. 針對該些資料列，過濾，抓出不重複出現的資料
 
+# 設定回傳檔案名
+finalResultCSV <- autoFileName(fileName="finalResultCSV",fileType=".csv")
+finalResultRDS <- autoFileName(fileName="finalResultRDS")
+
 # 0.載入第二次ETL所儲存的檔案
-step3ConvertUTF8 <- readRDS("E://LBH//step2ConvertUTF8.RDS") 
+step3ConvertUTF8 <- readRDS(step3FileName) 
 
 # 1.設定比對字詞
 
@@ -130,17 +171,22 @@ loadDict()
 # 設定比對字詞
 thirdTarget <- c("數據分析","大數據","數據探勘","數據挖掘","巨量數據","海量數據","資料分析",
                  "資料探勘","大資料","巨量資料","海量資料","數據採礦","資料採礦",
-                 "data","Data","analysis","Analysis","hadoop","Hadoop","HADOOP",
-                 "spark","Spark","SPARK","scala","Scala","SCALA","R","hdfs","Hdfs","HDFS",
+                 "data","Data","DATA","analysis","Analysis","hadoop","Hadoop","HADOOP",
+                 "spark","Spark","SPARK","scala","Scala","SCALA","hdfs","Hdfs","HDFS",
                  "hive","Hive","HIVE","pig","Pig","PIG")
 thirdRowNumber <- c()
 
 # 2. 分詞並比對
 for(i in 1:length(step3ConvertUTF8)){
   for(j in 1:length(step3ConvertUTF8[,1])){
-    if(any(thirdTarget %in% segmentCN(step3ConvertUTF8[j,i]))){
-      thirdRowNumber <<- c(thirdRowNumber,j) 
-    }
+    tryCatch({
+      if(any(thirdTarget %in% segmentCN(step3ConvertUTF8[j,i]))){
+        thirdRowNumber <<- c(thirdRowNumber,j) 
+      }      
+    }, error=function(e){
+      print(paste("[",j,",",i,"]"," 出錯",sep=""))
+    })
+
   }
   print(i)
 }
@@ -155,9 +201,12 @@ for(i in unique(thirdResultDF[["NAME"]])){
   finalResultDF <- rbind(finalResultDF,unique(thirdResultDF[thirdResultDF[["NAME"]]==i,]))
 }
 
-# 5. 儲存結果
-saveRDS(finalResultDF,"E://LBH//finalResultDF.RDS")
-write.csv(finalResultDF,"E://LBH//finalResultDF.csv")
+# 5. 儲存結果shiny呈現必須加載finalResultDF.csv
+saveRDS(finalResultDF,finalResultRDS)
+write.csv(finalResultDF,finalResultCSV)
+write.csv(finalResultDF,"E://LBH//Dropbox//GitHub//findProspect//DemoPresentShiny//data//finalResultDF.csv")
+totalConsumeTime <- proc.time() - ptm
+totalConsumeTime
 ###########################################
 # Shiny自動更新
  
