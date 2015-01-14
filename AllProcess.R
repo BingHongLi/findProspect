@@ -204,7 +204,7 @@ for(i in unique(thirdResultDF[["NAME"]])){
 # 5. 儲存結果shiny呈現必須加載finalResultDF.csv
 saveRDS(finalResultDF,finalResultRDS)
 write.csv(finalResultDF,finalResultCSV)
-write.csv(finalResultDF,"E://LBH//Dropbox//GitHub//findProspect//DemoPresentShiny//data//finalResultDF.csv")
+write.csv(finalResultDF,".//DemoPresentShiny//data//finalResultDF.csv")
 totalConsumeTime <- proc.time() - ptm
 totalConsumeTime
 ###########################################
